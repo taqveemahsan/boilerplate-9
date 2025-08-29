@@ -37,7 +37,7 @@ namespace Audit.Services
 
         public async Task<string?> LoginAsync(LoginModel model)
         {
-            var user = await _userManager.FindByNameAsync(model.Username);
+            var user = await _userManager.FindByEmailAsync(model.Username);
             if (user == null || !await _userManager.CheckPasswordAsync(user, model.Password))
                 return null;
 
