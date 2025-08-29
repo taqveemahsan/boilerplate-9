@@ -1,6 +1,6 @@
-using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using AuditPilot.Data.Entities;
 
 namespace AuditPilot.Data
 {
@@ -10,5 +10,8 @@ namespace AuditPilot.Data
             : base(options)
         {
         }
+
+        public DbSet<Client> Clients { get; set; } = null!;
+        public DbSet<ShareHolder> ShareHolders { get; set; } = null!;
     }
 }

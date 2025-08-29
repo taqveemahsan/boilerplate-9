@@ -1,0 +1,58 @@
+/* High-contrast, readable dark theme for Swagger UI */
+
+/* Base */
+html, body, .swagger-ui {
+  background: #121212 !important;
+  color: #e5e7eb !important;
+}
+
+/* Panels/blocks */
+.swagger-ui .topbar, .swagger-ui .scheme-container,
+.swagger-ui .info, .swagger-ui .model-box,
+.swagger-ui .responses-inner, .swagger-ui .parameters,
+.swagger-ui .opblock, .swagger-ui .model .property.primitive {
+  background: #1b1f24 !important;
+  color: #e5e7eb !important;
+  border-color: #2d333b !important;
+}
+
+/* Keep method badge colors as default (don’t dim) */
+
+/* Headings and text */
+.swagger-ui .opblock-tag, .swagger-ui .info .title,
+.swagger-ui .model-title, .swagger-ui .parameter__name,
+.swagger-ui .prop-name, .swagger-ui .response-col_status {
+  color: #e5e7eb !important;
+}
+.swagger-ui a, .swagger-ui .link, .swagger-ui .tab li a {
+  color: #58a6ff !important;
+}
+.swagger-ui .prop-type, .swagger-ui .parameter__type, .swagger-ui .parameter__in,
+.swagger-ui .markdown p { color: #c9d1d9 !important; }
+
+/* Inputs */
+.swagger-ui input, .swagger-ui select, .swagger-ui textarea {
+  background: #0d1117 !important;
+  color: #e5e7eb !important;
+  border-color: #30363d !important;
+}
+.swagger-ui ::placeholder { color: #8b949e !important; }
+
+/* Tables */
+.swagger-ui table { background: #1b1f24 !important; }
+.swagger-ui thead tr { background: #161b22 !important; }
+.swagger-ui td, .swagger-ui th { border-color: #2d333b !important; color: #e5e7eb !important; }
+
+/* Code blocks */
+.swagger-ui pre, .swagger-ui .microlight {
+  background: #0d1117 !important;
+  color: #e5e7eb !important;
+}
+
+/* Buttons: only style Authorize, keep others default contrast */
+.swagger-ui .btn.authorize, .swagger-ui .authorize__btn {
+  background-color: #238636 !important;
+  border-color: #238636 !important;
+  color: #ffffff !important;
+}
+.swagger-ui .btn.authorize:hover { background-color: #1f6f2e !important; }
