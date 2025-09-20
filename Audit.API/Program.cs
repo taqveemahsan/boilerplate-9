@@ -20,6 +20,7 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>()
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IClientService, ClientService>();
 builder.Services.AddScoped<IShareHolderService, ShareHolderService>();
+builder.Services.AddScoped<ITrialBalanceService, TrialBalanceService>();
 
 builder.Services.AddAuthentication(options =>
 {
@@ -45,6 +46,16 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo { Title = "Audit", Version = "v1" });
+    // Avoid schema collisions and normalize namespace brand to "Audit"
+    c.CustomSchemaIds(t =>
+    {
+        var ns = t.Namespace ?? string.Empty;
+        ns = ns.Replace("AuditPilot", "Audit").Replace("AuthPilot", "Audit");
+        var parts = ns.Split('.', StringSplitOptions.RemoveEmptyEntries);
+        var reduced = parts.Length >= 2 ? string.Join('.', parts[^2], parts[^1]) : ns;
+        var id = string.IsNullOrEmpty(reduced) ? t.Name : $"{reduced}.{t.Name}";
+        return id.Replace('+', '.');
+    });
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
         Name = "Authorization",
@@ -68,6 +79,7 @@ builder.Services.AddSwaggerGen(c =>
             Array.Empty<string>()
         }
     });
+    c.OperationFilter<AuditPilot.API.Swagger.TrialBalanceExamplesFilter>();
 });
 
 var app = builder.Build();
@@ -94,5 +106,43 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+
+// Minimal seeding for smoketest
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    // Ensure latest migrations are applied
+    db.Database.Migrate();
+    if (!db.Accounts.Any())
+    {
+        db.Accounts.AddRange(
+            new AuditPilot.Data.Entities.Account { Code = "10140", Name = "Cash", IsActive = true },
+            new AuditPilot.Data.Entities.Account { Code = "10150", Name = "Bank", IsActive = true },
+            new AuditPilot.Data.Entities.Account { Code = "20100", Name = "Payables", IsActive = true }
+        );
+        db.SaveChanges();
+    }
+    if (!db.FiscalPeriods.Any())
+    {
+        var clientId = db.Clients.Select(c => c.Id).FirstOrDefault();
+        if (clientId == Guid.Empty)
+        {
+            var c = new AuditPilot.Data.Entities.Client { Name = "Acme", Email = "acme@example.com", CompanyType = Audit.Common.CompanyType.Private };
+            db.Clients.Add(c);
+            db.SaveChanges();
+            clientId = c.Id;
+        }
+        db.FiscalPeriods.Add(new AuditPilot.Data.Entities.FiscalPeriod
+        {
+            ClientId = clientId,
+            Name = "FY 2024",
+            StartDate = new DateOnly(2024, 1, 1),
+            EndDate = new DateOnly(2024, 12, 31),
+            IsLocked = false,
+            CreatedAtUtc = DateTime.UtcNow
+        });
+        db.SaveChanges();
+    }
+}
 
 app.Run();
