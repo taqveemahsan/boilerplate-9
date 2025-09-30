@@ -407,7 +407,7 @@ namespace Audit.Services
         public async Task<TB.TrialBalanceRowDto> CreateAsync(TB.TrialBalanceRowCreateDto dto, CancellationToken ct = default)
         {
             if (dto.FiscalPeriodId <= 0) throw new ArgumentException("FiscalPeriodId is required");
-            if (dto.AccountId <= 0) throw new ArgumentException("AccountId is required");
+            if (dto.AccountId == Guid.Empty) throw new ArgumentException("AccountId is required");
             if (dto.CY_Debit < 0 || dto.CY_Credit < 0 || dto.Adj_Debit < 0 || dto.Adj_Credit < 0 || dto.PY_Debit < 0 || dto.PY_Credit < 0)
                 throw new ArgumentException("Amounts must be >= 0");
 
