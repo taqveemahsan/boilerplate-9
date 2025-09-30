@@ -1,4 +1,5 @@
 using AuthPilot.Models.Accounting;
+using AuthPilot.Models.TrialBalanceRows;
 
 namespace Audit.Services.Interfaces
 {
@@ -14,5 +15,8 @@ namespace Audit.Services.Interfaces
         Task<AuthPilot.Models.TrialBalanceRows.TrialBalanceImportResponse> ImportAsync(int fiscalPeriodId, System.IO.Stream fileStream, string fileName, bool force, CancellationToken ct);
         Task<(byte[] Content, string FileName, string ContentType)> ExportAsync(int fiscalPeriodId, string format, CancellationToken ct);
         Task<AuthPilot.Models.TrialBalanceRows.TrialBalanceSummaryDto> SummaryAsync(int fiscalPeriodId, CancellationToken ct);
+        Task<AuthPilot.Models.TrialBalanceRows.TrialBalanceRowDto> CreateAsync(TrialBalanceRowCreateDto dto, CancellationToken ct = default);
+        Task<AuthPilot.Models.TrialBalanceRows.TrialBalanceRowDto> CreateByCodeAsync(TrialBalanceRowCreateByCodeDto dto, CancellationToken ct = default);
+
     }
 }

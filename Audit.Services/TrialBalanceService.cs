@@ -1,4 +1,4 @@
-using Audit.Services.Interfaces;
+﻿using Audit.Services.Interfaces;
 using AuditPilot.Data;
 using Microsoft.EntityFrameworkCore;
 using AuthPilot.Models.Accounting;
@@ -16,7 +16,6 @@ namespace Audit.Services
         {
             _db = db;
         }
-
         public async Task<TrialBalanceDto> GetAsync(TrialBalanceRequest request, CancellationToken ct = default)
         {
             if (request.ToDate < request.FromDate)
@@ -25,42 +24,50 @@ namespace Audit.Services
             var fromDate = request.FromDate.Date;
             var toDate = request.ToDate.Date.AddDays(1).AddTicks(-1);
 
-            IQueryable<TrialBalanceRowDto> query =
+            // 1) Pre-aggregate with null-safe SUMs (decimal? -> coalesce to 0m)
+            var linesAgg =
+                from jl in _db.JournalEntryLines.AsNoTracking()
+                join j in _db.JournalEntries.AsNoTracking() on jl.JournalEntryId equals j.Id
+                where j.Date >= fromDate
+                   && j.Date <= toDate
+                   && (request.IncludeUnposted || j.Posted)
+                group jl by jl.AccountId into g
+                select new
+                {
+                    AccountId = g.Key,
+                    Debit = g.Sum(x => (decimal?)x.Debit) ?? 0m,
+                    Credit = g.Sum(x => (decimal?)x.Credit) ?? 0m
+                };
+
+            // 2) Left join Accounts to aggregates
+            var query =
                 from a in _db.Accounts.AsNoTracking()
-                join l in
-                    (
-                        from jl in _db.JournalEntryLines
-                        join j in _db.JournalEntries on jl.JournalEntryId equals j.Id
-                        where j.Date >= fromDate && j.Date <= toDate && (request.IncludeUnposted || j.Posted)
-                        group jl by jl.AccountId into g
-                        select new { AccountId = g.Key, Debit = g.Sum(x => x.Debit), Credit = g.Sum(x => x.Credit) }
-                    )
-                on a.Id equals l.AccountId into gj
+                join l in linesAgg on a.Id equals l.AccountId into gj
                 from agg in gj.DefaultIfEmpty()
-                where request.IncludeZeroBalance || (agg != null && (agg.Debit != 0 || agg.Credit != 0))
+                where request.IncludeZeroBalance
+                   || (agg != null && (agg.Debit != 0m || agg.Credit != 0m))
                 select new TrialBalanceRowDto
                 {
-                    AccountId = a.Id,
-                    Code = a.Code,
+                    AccountId = a.Id,              // PK non-null
+                    Code = a.Code,            // if nullable & you want: a.Code ?? ""
                     Name = a.Name,
-                    Debit = agg != null ? agg.Debit : 0,
-                    Credit = agg != null ? agg.Credit : 0
+                    //Debit = agg.Debit, // ✅ null-safe projection
+                    //Credit = agg.Credit  // ✅ null-safe projection
                 };
 
             var rows = await query
-                .OrderBy(r => r.Code)
+                .OrderBy(r => r.Code ?? "")        // ✅ safe ordering if Code can be null
                 .ToListAsync(ct);
 
-            var result = new TrialBalanceDto
+            return new TrialBalanceDto
             {
                 Rows = rows,
                 TotalDebit = rows.Sum(r => r.Debit),
                 TotalCredit = rows.Sum(r => r.Credit)
             };
-
-            return result;
         }
 
+        
         // -------------------- Persisted Trial Balance Rows APIs --------------------
 
         public async Task<TB.PagedResult<TB.TrialBalanceRowDto>> ListAsync(TB.TrialBalanceQuery q, CancellationToken ct)
@@ -77,12 +84,12 @@ namespace Audit.Services
             if (!string.IsNullOrWhiteSpace(q.Search))
             {
                 var s = q.Search.Trim();
-                query = query.Where(r => r.Account.Code.Contains(s) || r.Account.Name.Contains(s));
+                query = query.Where(r => r.Account != null && (r.Account.Code.Contains(s) || r.Account.Name.Contains(s)));
             }
             if (!string.IsNullOrWhiteSpace(q.AccountCode))
             {
                 var ac = q.AccountCode.Trim();
-                query = query.Where(r => r.Account.Code == ac);
+                query = query.Where(r => r.Account != null && r.Account.Code == ac);
             }
 
             var total = await query.CountAsync(ct);
@@ -90,12 +97,12 @@ namespace Audit.Services
             bool asc = string.Equals(q.SortDir, "asc", StringComparison.OrdinalIgnoreCase);
             query = (q.SortBy ?? "Code").ToLowerInvariant() switch
             {
-                "name" => asc ? query.OrderBy(r => r.Account.Name) : query.OrderByDescending(r => r.Account.Name),
+                "name" => asc ? query.OrderBy(r => r.Account != null ? r.Account.Name : "") : query.OrderByDescending(r => r.Account != null ? r.Account.Name : ""),
                 "cy_debit" => asc ? query.OrderBy(r => r.CY_Debit) : query.OrderByDescending(r => r.CY_Debit),
                 "cy_credit" => asc ? query.OrderBy(r => r.CY_Credit) : query.OrderByDescending(r => r.CY_Credit),
                 "cy_adjusted_debit" => asc ? query.OrderBy(r => r.CY_Adjusted_Debit) : query.OrderByDescending(r => r.CY_Adjusted_Debit),
                 "cy_adjusted_credit" => asc ? query.OrderBy(r => r.CY_Adjusted_Credit) : query.OrderByDescending(r => r.CY_Adjusted_Credit),
-                _ => asc ? query.OrderBy(r => r.Account.Code) : query.OrderByDescending(r => r.Account.Code)
+                _ => asc ? query.OrderBy(r => r.Account != null ? r.Account.Code : "") : query.OrderByDescending(r => r.Account != null ? r.Account.Code : "")
             };
 
             var items = await query
@@ -105,8 +112,8 @@ namespace Audit.Services
                 {
                     Id = r.Id,
                     FiscalPeriodId = r.FiscalPeriodId,
-                    AccountCode = r.Account.Code,
-                    AccountName = r.Account.Name,
+                    AccountCode = r.Account != null ? r.Account.Code : "",
+                    AccountName = r.Account != null ? r.Account.Name : "",
                     Level1 = null,
                     Level2 = null,
                     Level3 = null,
@@ -396,5 +403,129 @@ namespace Audit.Services
             var balanced = totalAdjCY_Debit == totalAdjCY_Credit;
             return new TB.TrialBalanceSummaryDto(totalCY_Debit, totalCY_Credit, totalAdj_Debit, totalAdj_Credit, totalAdjCY_Debit, totalAdjCY_Credit, totalPY_Debit, totalPY_Credit, balanced);
         }
+
+        public async Task<TB.TrialBalanceRowDto> CreateAsync(TB.TrialBalanceRowCreateDto dto, CancellationToken ct = default)
+        {
+            if (dto.FiscalPeriodId <= 0) throw new ArgumentException("FiscalPeriodId is required");
+            if (dto.AccountId <= 0) throw new ArgumentException("AccountId is required");
+            if (dto.CY_Debit < 0 || dto.CY_Credit < 0 || dto.Adj_Debit < 0 || dto.Adj_Credit < 0 || dto.PY_Debit < 0 || dto.PY_Credit < 0)
+                throw new ArgumentException("Amounts must be >= 0");
+
+            var period = await _db.FiscalPeriods.FirstOrDefaultAsync(p => p.Id == dto.FiscalPeriodId, ct)
+                         ?? throw new ArgumentException("FiscalPeriod not found");
+            if (period.IsLocked) throw new InvalidOperationException("Fiscal period is locked");
+
+            // Idempotency/uniqueness: one row per (period, account)
+            var exists = await _db.TrialBalanceRows
+                .AnyAsync(r => r.FiscalPeriodId == dto.FiscalPeriodId && r.AccountId == dto.AccountId, ct);
+            if (exists) throw new InvalidOperationException("Row already exists for this FiscalPeriodId + AccountId");
+
+            var account = await _db.Accounts.FirstOrDefaultAsync(a => a.Id == dto.AccountId, ct)
+                         ?? throw new ArgumentException("Account not found");
+
+            var row = new TrialBalanceRow
+            {
+                FiscalPeriodId = dto.FiscalPeriodId,
+                AccountId = dto.AccountId,
+                CY_Debit = dto.CY_Debit,
+                CY_Credit = dto.CY_Credit,
+                Adj_Debit = dto.Adj_Debit,
+                Adj_Credit = dto.Adj_Credit,
+                PY_Debit = dto.PY_Debit,
+                PY_Credit = dto.PY_Credit,
+                CY_Adjusted_Debit = dto.CY_Debit + dto.Adj_Debit,
+                CY_Adjusted_Credit = dto.CY_Credit + dto.Adj_Credit,
+                Notes = dto.Notes,
+                CreatedAtUtc = DateTime.UtcNow,
+                UpdatedAtUtc = DateTime.UtcNow
+            };
+
+            _db.TrialBalanceRows.Add(row);
+            await _db.SaveChangesAsync(ct);
+
+            // Return DTO (load account for names/codes)
+            return new TB.TrialBalanceRowDto
+            {
+                Id = row.Id,
+                FiscalPeriodId = row.FiscalPeriodId,
+                AccountCode = account.Code,
+                AccountName = account.Name,
+                CY_Debit = row.CY_Debit,
+                CY_Credit = row.CY_Credit,
+                Adj_Debit = row.Adj_Debit,
+                Adj_Credit = row.Adj_Credit,
+                CY_Adjusted_Debit = row.CY_Adjusted_Debit,
+                CY_Adjusted_Credit = row.CY_Adjusted_Credit,
+                PY_Debit = row.PY_Debit,
+                PY_Credit = row.PY_Credit,
+                Notes = row.Notes,
+                RowVersion = row.RowVersion
+            };
+        }
+
+        public async Task<TB.TrialBalanceRowDto> CreateByCodeAsync(TB.TrialBalanceRowCreateByCodeDto dto, CancellationToken ct = default)
+        {
+            if (dto.FiscalPeriodId <= 0) throw new ArgumentException("FiscalPeriodId is required");
+            if (string.IsNullOrWhiteSpace(dto.AccountCode)) throw new ArgumentException("AccountCode is required");
+            if (dto.CY_Debit < 0 || dto.CY_Credit < 0 || dto.Adj_Debit < 0 || dto.Adj_Credit < 0 || dto.PY_Debit < 0 || dto.PY_Credit < 0)
+                throw new ArgumentException("Amounts must be >= 0");
+
+            var period = await _db.FiscalPeriods.FirstOrDefaultAsync(p => p.Id == dto.FiscalPeriodId, ct)
+                         ?? throw new ArgumentException("FiscalPeriod not found");
+            if (period.IsLocked) throw new InvalidOperationException("Fiscal period is locked");
+
+            var account = await _db.Accounts.FirstOrDefaultAsync(a => a.Code == dto.AccountCode, ct);
+            if (account == null)
+            {
+                if (!dto.AutoCreateAccountIfMissing)
+                    throw new ArgumentException("Account not found by code");
+                account = new Account { Code = dto.AccountCode, Name = dto.AccountCode, IsActive = true };
+                _db.Accounts.Add(account);
+                await _db.SaveChangesAsync(ct);
+            }
+
+            var exists = await _db.TrialBalanceRows
+                .AnyAsync(r => r.FiscalPeriodId == dto.FiscalPeriodId && r.AccountId == account.Id, ct);
+            if (exists) throw new InvalidOperationException("Row already exists for this FiscalPeriodId + AccountCode");
+
+            var row = new TrialBalanceRow
+            {
+                FiscalPeriodId = dto.FiscalPeriodId,
+                AccountId = account.Id,
+                CY_Debit = dto.CY_Debit,
+                CY_Credit = dto.CY_Credit,
+                Adj_Debit = dto.Adj_Debit,
+                Adj_Credit = dto.Adj_Credit,
+                PY_Debit = dto.PY_Debit,
+                PY_Credit = dto.PY_Credit,
+                CY_Adjusted_Debit = dto.CY_Debit + dto.Adj_Debit,
+                CY_Adjusted_Credit = dto.CY_Credit + dto.Adj_Credit,
+                Notes = dto.Notes,
+                CreatedAtUtc = DateTime.UtcNow,
+                UpdatedAtUtc = DateTime.UtcNow
+            };
+
+            _db.TrialBalanceRows.Add(row);
+            await _db.SaveChangesAsync(ct);
+
+            return new TB.TrialBalanceRowDto
+            {
+                Id = row.Id,
+                FiscalPeriodId = row.FiscalPeriodId,
+                AccountCode = account.Code,
+                AccountName = account.Name,
+                CY_Debit = row.CY_Debit,
+                CY_Credit = row.CY_Credit,
+                Adj_Debit = row.Adj_Debit,
+                Adj_Credit = row.Adj_Credit,
+                CY_Adjusted_Debit = row.CY_Adjusted_Debit,
+                CY_Adjusted_Credit = row.CY_Adjusted_Credit,
+                PY_Debit = row.PY_Debit,
+                PY_Credit = row.PY_Credit,
+                Notes = row.Notes,
+                RowVersion = row.RowVersion
+            };
+        }
+
     }
 }

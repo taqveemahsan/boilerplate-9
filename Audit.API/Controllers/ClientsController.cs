@@ -41,7 +41,8 @@ namespace AuditPilot.API.Controllers
             return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
         }
 
-        [HttpPut("{id:guid}")]
+        // Instead of PUT, use POST with a route "update/{id}"
+        [HttpPost("update/{id:guid}")]
         public async Task<IActionResult> Update(Guid id, [FromBody] UpdateClientModel model)
         {
             if (!ModelState.IsValid) return ValidationProblem(ModelState);
@@ -50,7 +51,8 @@ namespace AuditPilot.API.Controllers
             return NoContent();
         }
 
-        [HttpDelete("{id:guid}")]
+        // Instead of DELETE, use POST with a route "delete/{id}"
+        [HttpPost("delete/{id:guid}")]
         public async Task<IActionResult> Delete(Guid id)
         {
             var ok = await _clientService.DeleteAsync(id);
@@ -59,4 +61,3 @@ namespace AuditPilot.API.Controllers
         }
     }
 }
-

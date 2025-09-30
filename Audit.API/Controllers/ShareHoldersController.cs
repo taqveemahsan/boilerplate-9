@@ -40,7 +40,8 @@ namespace AuditPilot.API.Controllers
             return Ok(item);
         }
 
-        [HttpPut("{id:guid}")]
+        // Instead of PUT, expose as POST with "update/{id}"
+        [HttpPost("update/{id:guid}")]
         public async Task<IActionResult> Update(Guid id, [FromBody] UpdateShareHolderModel model)
         {
             if (!ModelState.IsValid) return ValidationProblem(ModelState);
@@ -49,7 +50,8 @@ namespace AuditPilot.API.Controllers
             return NoContent();
         }
 
-        [HttpDelete("{id:guid}")]
+        // Instead of DELETE, expose as POST with "delete/{id}"
+        [HttpPost("delete/{id:guid}")]
         public async Task<IActionResult> Delete(Guid id)
         {
             var ok = await _service.DeleteAsync(id);

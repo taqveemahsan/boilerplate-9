@@ -26,6 +26,8 @@ namespace AuditPilot.Data.Entities
 
         [Required]
         public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
+
+        [ForeignKey(nameof(ClientId))]
+        public Client Client { get; set; } = default!;
     }
 }
-

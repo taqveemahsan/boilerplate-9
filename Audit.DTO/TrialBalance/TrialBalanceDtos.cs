@@ -10,7 +10,33 @@ namespace AuthPilot.Models.TrialBalanceRows
         public string? SortBy { get; init; } = "Code";
         public string? SortDir { get; init; } = "asc";
     }
+    public class TrialBalanceRowCreateDto
+    {
+        public int FiscalPeriodId { get; set; }
+        public Guid AccountId { get; set; }               // Prefer this for strict create
+        public decimal CY_Debit { get; set; }
+        public decimal CY_Credit { get; set; }
+        public decimal Adj_Debit { get; set; }
+        public decimal Adj_Credit { get; set; }
+        public decimal PY_Debit { get; set; }
+        public decimal PY_Credit { get; set; }
+        public string? Notes { get; set; }
+    }
 
+    // Convenience: create by AccountCode (agar AccountId na dena ho)
+    public class TrialBalanceRowCreateByCodeDto
+    {
+        public int FiscalPeriodId { get; set; }
+        public string AccountCode { get; set; } = string.Empty;
+        public decimal CY_Debit { get; set; }
+        public decimal CY_Credit { get; set; }
+        public decimal Adj_Debit { get; set; }
+        public decimal Adj_Credit { get; set; }
+        public decimal PY_Debit { get; set; }
+        public decimal PY_Credit { get; set; }
+        public string? Notes { get; set; }
+        public bool AutoCreateAccountIfMissing { get; set; } = false; // optional
+    }
     public record TrialBalanceRowDto
     {
         public int Id { get; init; }
